@@ -15,20 +15,33 @@ stress tests through the 2020 COVID, 2022 hike-cycle, and 2023 SVB regimes.
 ## Quick start
 
 ```bash
-make dev          # create .venv and install package + dev tools
-make fetch        # build the SOFR curve dataset (offline synthetic by default)
-make check        # ruff + mypy + pytest
+python3 -m venv .venv          # or your pyenv 3.11 binary, see note below
+source .venv/bin/activate
+pip install -r requirements.txt
+python main.py                 # runs the pipeline, prints results, saves figures/
 ```
+
+`main.py` builds the dataset, prints a results summary, and writes three plots to
+`figures/` (curve shapes across regimes, the 3M/2Y/10Y rate history, and the
+2s10s inversion).
 
 No API key required: the data pipeline ships with a deterministic synthetic
 generator that reproduces the real curve *regimes* (COVID ZLB, the +525 bp hike
 cycle, the SVB inversion). To pull live data instead, copy `.env.example` to
 `.env`, add a free [FRED API key](https://fredaccount.stlouisfed.org/apikeys),
-and run `make fetch` (auto-detects the key) or `python -m ird.data.fetch_sofr --source fred`.
+and run `python main.py --source fred`.
 
-## Architecture
+> **pyenv note:** if `python3` is a pyenv shim, build the venv from a concrete
+> interpreter so it doesn't re-enter the shim:
+> `~/.pyenv/versions/3.11.0/bin/python -m venv .venv`.
+
+Want to run the tests too? `pip install pytest` then `pytest` (21 unit tests).
+
+## Project layout
 
 ```
+main.py            # run this — builds the dataset, prints results, saves figures/
+requirements.txt   # the only deps you need
 src/ird/
 ├── core/      # CurveDate, VolSurface, day-count & tenor conventions  [done]
 ├── data/      # Phase 1: FRED/synthetic ingestion, validation, storage [done]
@@ -37,21 +50,16 @@ src/ird/
 ├── greeks/    # Phase 5: DV01, key-rate durations, pathwise MC Greeks
 ├── backtest/  # Phase 6: walk-forward delta hedging, P&L attribution
 └── stress/    # Phase 7: scenarios, VaR/CVaR, reverse stress test
-cpp/           # Phase 4: C++ MC engine (pybind11 + OpenMP + Sobol)
-notebooks/     # per-phase narrative & visualization
-tests/         # pytest suite (offline by default)
+notebooks/     # per-phase narrative & visualization (placeholders)
+tests/         # unit tests
 ```
-
-The package uses a `src/` layout, `pyproject.toml` packaging, `ruff` for
-lint/format, `mypy` for typing, `pytest` for tests, and GitHub Actions CI across
-Python 3.10–3.12.
 
 ## Phase 1 — data pipeline (implemented)
 
-`python -m ird.data.fetch_sofr` builds a validated, business-day-complete daily
-history of SOFR pillars (1M–30Y) from 2018 to present, persisted as Parquet with
-a SQLite date index. The validation layer flags missing business days,
-implausible >150 bp single-day jumps, NaNs, and curve inversions before cleaning.
+Running `python main.py` builds a validated, business-day-complete daily history
+of SOFR pillars (1M–30Y) from 2018 to present, persisted as Parquet with a SQLite
+date index. The validation layer flags missing business days, implausible
+>150 bp single-day jumps, NaNs, and curve inversions before cleaning.
 
 ```python
 from ird.data import CurveStore
