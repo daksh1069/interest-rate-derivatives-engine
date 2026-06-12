@@ -1,0 +1,51 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+*.so
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Testing / coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Data artifacts (regenerable; do not commit large/raw data)
+data/db/
+data/raw/
+data/cache/
+*.parquet
+*.sqlite
+*.db
+
+# Secrets / local config
+.env
+.env.local
+
+# C++ build
+cpp/build/
+*.o
+*.obj
+*.dylib
+*.dll
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
