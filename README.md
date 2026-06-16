@@ -23,8 +23,9 @@ Svensson, calibrates Hull-White to an ATM swaption vol surface, prints results,
 and writes metrics to `results/` and plots to `figures/`: curve shapes across
 regimes, the 3M/2Y/10Y rate history, the 2s10s inversion, the bootstrapped
 zero/forward/NSS curve, the discount-factor curve, the Hull-White vol-surface
-calibration fit, and the Monte Carlo convergence (standard vs control-variate vs
-quasi-MC, plus the Bermudan early-exercise premium).
+calibration fit, the Monte Carlo convergence (standard vs control-variate vs
+quasi-MC, plus the Bermudan early-exercise premium), and the swaption-book
+key-rate DV01 profile.
 
 No API key required: the data pipeline ships with a deterministic synthetic
 generator that reproduces the real curve *regimes* (COVID ZLB, the +525 bp hike

@@ -41,6 +41,13 @@ from ird.mc import (  # noqa: E402
     price_bermudan_swaption_mc,
     price_european_swaption_mc,
 )
+from ird.greeks import (  # noqa: E402
+    dv01,
+    key_rate_dv01,
+    parallel_gamma,
+    swaption_price_fn,
+    swaption_vega,
+)
 
 # A representative ATM swaption normal-vol surface (basis points), expiry x tenor.
 # Stands in for a market quote sheet; swap in real data when available.
@@ -212,6 +219,44 @@ def plot_vol_surface(market_bp, model_bp, expiries, tenors, out: Path) -> None:
     fig.tight_layout()
     fig.savefig(out, dpi=130)
     plt.close(fig)
+
+
+def plot_krd_profile(tenors, krd_bp, out: Path) -> None:
+    fig, ax = plt.subplots(figsize=(9, 5))
+    colors = ["#185FA5" if v >= 0 else "#D85A30" for v in krd_bp]
+    ax.bar([str(t) for t in tenors], krd_bp, color=colors)
+    ax.axhline(0, color="black", linewidth=0.8)
+    ax.set_xlabel("Curve pillar (years)")
+    ax.set_ylabel("Key-rate DV01 (per 1bp, x1e4)")
+    ax.set_title("Swaption book key-rate DV01 profile")
+    ax.grid(True, axis="y", alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out, dpi=130)
+    plt.close(fig)
+
+
+def build_risk_summary(book, net_dv01, net_vega, net_gamma, krd) -> str:
+    """Reproducible risk report for the sample swaption book."""
+    lines = [
+        "=" * 56,
+        "Swaption book risk report (bump-and-reprice)",
+        "=" * 56,
+        "Positions:",
+    ]
+    for desc, price in book:
+        lines.append(f"  {desc:<34} PV = {price * 1e4:8.2f} bp")
+    lines += [
+        "",
+        f"Net DV01           : {net_dv01 * 1e4:+.3f}  (x1e4, per 1bp parallel)",
+        f"Net curve convexity: {net_gamma:+.4e}  (d2V/dy2)",
+        f"Net vega           : {net_vega * 1e4:+.3f}  (x1e4, per 1bp sigma)",
+        "",
+        "--- Net key-rate DV01 profile (x1e4 per 1bp) ---",
+    ]
+    for t, v in krd.items():
+        lines.append(f"  {t:>6.3f}y : {v * 1e4:+.4f}")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def plot_mc_convergence(ns, plain, cv, qmc, out: Path) -> None:
@@ -403,6 +448,30 @@ def main(argv: list[str] | None = None) -> int:
     mc_summary = build_mc_summary(analytic, mc_best, berm, ns, qmc[-1] / 1e4)
     print("\n" + mc_summary)
     (RESULTS_DIR / "mc_pricing.txt").write_text(mc_summary)
+
+    # Greeks & risk: a sample swaption book (long 5Yx10Y receiver, short 2Yx5Y payer).
+    a_c, sig_c = hw_res.a, hw_res.sigma
+    k1 = HullWhite1F(a_c, sig_c, curve).forward_swap_rate(5.0, 10.0, 2)
+    k2 = HullWhite1F(a_c, sig_c, curve).forward_swap_rate(2.0, 5.0, 2)
+    positions = [  # (sign, description, price_fn, vega_args)
+        (+1, "long  5Yx10Y receiver", swaption_price_fn(a_c, sig_c, 5.0, 10.0, k1, 2, False),
+         (5.0, 10.0, k1, 2, False)),
+        (-1, "short 2Yx5Y payer", swaption_price_fn(a_c, sig_c, 2.0, 5.0, k2, 2, True),
+         (2.0, 5.0, k2, 2, True)),
+    ]
+    book = [(d, sgn * pf(curve)) for sgn, d, pf, _ in positions]
+    net_dv01 = sum(sgn * dv01(pf, curve) for sgn, _, pf, _ in positions)
+    net_gamma = sum(sgn * parallel_gamma(pf, curve) for sgn, _, pf, _ in positions)
+    net_vega = sum(sgn * swaption_vega(curve, a_c, sig_c, *va) for sgn, _, _, va in positions)
+    krd_net: dict[float, float] = {}
+    for sgn, _, pf, _ in positions:
+        for t, v in key_rate_dv01(pf, curve).items():
+            krd_net[t] = krd_net.get(t, 0.0) + sgn * v
+    plot_krd_profile(list(krd_net), [v * 1e4 for v in krd_net.values()],
+                     FIG_DIR / "08_krd_profile.png")
+    risk_summary = build_risk_summary(book, net_dv01, net_vega, net_gamma, krd_net)
+    print("\n" + risk_summary)
+    (RESULTS_DIR / "risk_report.txt").write_text(risk_summary)
     # Machine-readable bootstrapped curve over a maturity grid.
     pd.DataFrame(
         {
@@ -420,7 +489,8 @@ def main(argv: list[str] | None = None) -> int:
           f"{RESULTS_DIR / 'bootstrapped_curve.csv'}")
     print(f"Saved HW calib -> {RESULTS_DIR / 'hw_calibration.txt'}")
     print(f"Saved MC       -> {RESULTS_DIR / 'mc_pricing.txt'}")
-    print(f"Saved 7 figures -> {FIG_DIR}/")
+    print(f"Saved risk     -> {RESULTS_DIR / 'risk_report.txt'}")
+    print(f"Saved 8 figures -> {FIG_DIR}/")
     return 0
 
 

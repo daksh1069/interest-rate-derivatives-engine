@@ -1,0 +1,11 @@
+========================================================
+Monte Carlo swaption pricing (2Y x 5Y ATM payer)
+========================================================
+Jamshidian analytic : 239.29 bp
+MC (200k, CV)       : 239.31 bp  (+/- 0.404 bp, err 0.022 bp)
+QMC error @  16384 : 0.0005 bp
+
+--- Bermudan vs European (Longstaff-Schwartz) ---
+European            : 239.29 bp
+Bermudan (LSM)      : 318.73 bp (+/- 1.640 bp)
+Early-exercise prem : 79.4 bp
