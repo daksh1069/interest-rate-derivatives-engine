@@ -37,6 +37,10 @@ from ird.models import (  # noqa: E402
     calibrate_hull_white,
     model_atm_normal_vol,
 )
+from ird.mc import (  # noqa: E402
+    price_bermudan_swaption_mc,
+    price_european_swaption_mc,
+)
 
 # A representative ATM swaption normal-vol surface (basis points), expiry x tenor.
 # Stands in for a market quote sheet; swap in real data when available.
@@ -210,6 +214,40 @@ def plot_vol_surface(market_bp, model_bp, expiries, tenors, out: Path) -> None:
     plt.close(fig)
 
 
+def plot_mc_convergence(ns, plain, cv, qmc, out: Path) -> None:
+    fig, ax = plt.subplots(figsize=(9, 5.5))
+    ax.loglog(ns, plain, "o-", color="#185FA5", label="Standard MC")
+    ax.loglog(ns, cv, "s--", color="#1D9E75", label="+ control variate")
+    ax.loglog(ns, qmc, "^:", color="#534AB7", label="Quasi-MC (Halton)")
+    ax.set_xlabel("Paths (N)")
+    ax.set_ylabel("Absolute pricing error (bp)")
+    ax.set_title("Monte Carlo swaption convergence vs Jamshidian analytic")
+    ax.legend()
+    ax.grid(True, which="both", alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out, dpi=130)
+    plt.close(fig)
+
+
+def build_mc_summary(analytic, mc, berm, ns, qmc_err) -> str:
+    """Reproducible Monte Carlo pricing report (2Y x 5Y ATM payer)."""
+    return "\n".join([
+        "=" * 56,
+        "Monte Carlo swaption pricing (2Y x 5Y ATM payer)",
+        "=" * 56,
+        f"Jamshidian analytic : {analytic * 1e4:.2f} bp",
+        f"MC (200k, CV)       : {mc.price * 1e4:.2f} bp  "
+        f"(+/- {mc.std_error * 1e4:.3f} bp, err {abs(mc.price - analytic) * 1e4:.3f} bp)",
+        f"QMC error @ {ns[-1]:>6} : {qmc_err * 1e4:.4f} bp",
+        "",
+        "--- Bermudan vs European (Longstaff-Schwartz) ---",
+        f"European            : {analytic * 1e4:.2f} bp",
+        f"Bermudan (LSM)      : {berm.price * 1e4:.2f} bp (+/- {berm.std_error * 1e4:.3f} bp)",
+        f"Early-exercise prem : {(berm.price - analytic) * 1e4:.1f} bp",
+        "",
+    ])
+
+
 def build_hw_summary(res, market_bp, model_bp, expiries, tenors) -> str:
     """Reproducible Hull-White calibration report."""
     err = np.array(model_bp) - np.array(market_bp)
@@ -345,6 +383,26 @@ def main(argv: list[str] | None = None) -> int:
                                   SWAPTION_EXPIRIES, SWAPTION_TENORS)
     print("\n" + hw_summary)
     (RESULTS_DIR / "hw_calibration.txt").write_text(hw_summary)
+
+    # Monte Carlo: convergence vs analytic, variance reduction, Bermudan premium.
+    mc_expiry, mc_tenor = 2.0, 5.0
+    analytic = hw.swaption_price(mc_expiry, mc_tenor, None, freq=2, payer=True)
+    ns = [256, 1024, 4096, 16384]
+    plain = [abs(price_european_swaption_mc(hw, mc_expiry, mc_tenor, n_paths=n,
+             control_variate=False, antithetic=False, seed=0).price - analytic) * 1e4
+             for n in ns]
+    cv = [abs(price_european_swaption_mc(hw, mc_expiry, mc_tenor, n_paths=n,
+          control_variate=True, seed=0).price - analytic) * 1e4 for n in ns]
+    qmc = [abs(price_european_swaption_mc(hw, mc_expiry, mc_tenor, n_paths=n,
+           method="qmc").price - analytic) * 1e4 for n in ns]
+    plot_mc_convergence(ns, plain, cv, qmc, FIG_DIR / "07_mc_convergence.png")
+
+    mc_best = price_european_swaption_mc(hw, mc_expiry, mc_tenor, n_paths=200_000,
+                                         control_variate=True, seed=0)
+    berm = price_bermudan_swaption_mc(hw, mc_expiry, mc_tenor, n_paths=40_000, seed=0)
+    mc_summary = build_mc_summary(analytic, mc_best, berm, ns, qmc[-1] / 1e4)
+    print("\n" + mc_summary)
+    (RESULTS_DIR / "mc_pricing.txt").write_text(mc_summary)
     # Machine-readable bootstrapped curve over a maturity grid.
     pd.DataFrame(
         {
@@ -361,7 +419,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Saved curve    -> {RESULTS_DIR / 'curve_metrics.txt'}, "
           f"{RESULTS_DIR / 'bootstrapped_curve.csv'}")
     print(f"Saved HW calib -> {RESULTS_DIR / 'hw_calibration.txt'}")
-    print(f"Saved 6 figures -> {FIG_DIR}/")
+    print(f"Saved MC       -> {RESULTS_DIR / 'mc_pricing.txt'}")
+    print(f"Saved 7 figures -> {FIG_DIR}/")
     return 0
 
 
