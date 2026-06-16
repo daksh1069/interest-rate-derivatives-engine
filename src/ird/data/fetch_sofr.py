@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import io
+import time
 
 import pandas as pd
 
@@ -25,30 +25,60 @@ from ird.logging_config import configure_logging, get_logger
 
 logger = get_logger(__name__)
 
-_FRED_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv"
+# Official FRED API (JSON). The older graph/fredgraph.csv endpoint is slow and
+# prone to read timeouts; this is the documented, supported endpoint.
+_FRED_API_URL = "https://api.stlouisfed.org/fred/series/observations"
+_TIMEOUT = 60
+_MAX_RETRIES = 3
 
 
-def fetch_fred_series(series_id: str, start: dt.date, api_key: str) -> pd.Series:
-    """Fetch one FRED series as a date-indexed percentage->decimal Series."""
+def fetch_fred_series(
+    series_id: str, start: dt.date, api_key: str, session=None
+) -> pd.Series:
+    """Fetch one FRED series as a date-indexed percentage->decimal Series.
+
+    Uses the official ``series/observations`` JSON endpoint, with retries and
+    backoff for transient network timeouts.
+    """
     import requests
 
+    sess = session or requests.Session()
     params = {
-        "id": series_id,
-        "cosd": start.isoformat(),
+        "series_id": series_id,
         "api_key": api_key,
+        "file_type": "json",
+        "observation_start": start.isoformat(),
     }
-    resp = requests.get(_FRED_CSV_URL, params=params, timeout=30)
-    resp.raise_for_status()
-    raw = pd.read_csv(io.StringIO(resp.text))
-    raw.columns = ["date", "value"]
-    raw["date"] = pd.to_datetime(raw["date"])
-    raw["value"] = pd.to_numeric(raw["value"], errors="coerce") / 100.0
-    return raw.set_index("date")["value"].rename(series_id)
+    last_err: Exception | None = None
+    for attempt in range(1, _MAX_RETRIES + 1):
+        try:
+            resp = sess.get(_FRED_API_URL, params=params, timeout=_TIMEOUT)
+            resp.raise_for_status()
+            obs = resp.json().get("observations", [])
+            frame = pd.DataFrame(obs)
+            if frame.empty:
+                return pd.Series(dtype=float, name=series_id)
+            dates = pd.to_datetime(frame["date"])
+            # FRED encodes missing values as ".".
+            values = pd.to_numeric(frame["value"], errors="coerce") / 100.0
+            return pd.Series(values.to_numpy(), index=dates, name=series_id)
+        except requests.exceptions.RequestException as exc:
+            last_err = exc
+            wait = 2 ** attempt
+            logger.warning(
+                "FRED fetch %s failed (attempt %d/%d): %s; retrying in %ds",
+                series_id, attempt, _MAX_RETRIES, exc, wait,
+            )
+            time.sleep(wait)
+    raise RuntimeError(f"FRED fetch failed for {series_id}: {last_err}")
 
 
 def fetch_fred_history(settings: Settings, start: dt.date) -> pd.DataFrame:
     """Assemble the wide curve history from FRED constant-maturity series."""
+    import requests
+
     assert settings.fred_api_key is not None
+    session = requests.Session()
     cols: dict[str, pd.Series] = {}
     for tenor in settings.tenors:
         series_id = FRED_SERIES.get(tenor)
@@ -56,7 +86,9 @@ def fetch_fred_history(settings: Settings, start: dt.date) -> pd.DataFrame:
             logger.warning("No FRED series mapped for tenor %s; skipping", tenor)
             continue
         logger.info("Fetching FRED series %s for tenor %s", series_id, tenor)
-        cols[tenor] = fetch_fred_series(series_id, start, settings.fred_api_key)
+        cols[tenor] = fetch_fred_series(
+            series_id, start, settings.fred_api_key, session=session
+        )
     df = pd.DataFrame(cols)
     df.index.name = None
     return df
