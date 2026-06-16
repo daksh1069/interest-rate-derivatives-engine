@@ -61,6 +61,23 @@ class HullWhite1F:
         """P(t, T) given the short rate ``r`` at time ``t``."""
         return self.A(t, T) * math.exp(-self.B(t, T) * r)
 
+    def alpha(self, t: float) -> float:
+        """Deterministic shift so that r(t) = x(t) + alpha(t) fits the curve."""
+        return self._f0(t) + (self.sigma**2 / (2.0 * self.a**2)) * (
+            1.0 - math.exp(-self.a * t)
+        ) ** 2
+
+    def x_variance(self, t: float) -> float:
+        """Variance of the Ornstein-Uhlenbeck factor x(t) under Q (x(0)=0)."""
+        return self.sigma**2 / (2.0 * self.a) * (1.0 - math.exp(-2.0 * self.a * t))
+
+    def forward_measure_x_mean(self, T: float) -> float:
+        """Mean of x(T) under the T-forward measure (the convexity adjustment)."""
+        a, s = self.a, self.sigma
+        return -(s**2 / a) * (
+            (1.0 - math.exp(-a * T)) / a - (1.0 - math.exp(-2.0 * a * T)) / (2.0 * a)
+        )
+
     @property
     def r0(self) -> float:
         """Short rate consistent with the curve at t=0 (the instant forward)."""
