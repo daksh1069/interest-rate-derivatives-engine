@@ -19,9 +19,11 @@ python main.py                 # runs the pipeline, prints results, saves figure
 ```
 
 `main.py` builds the dataset, bootstraps the latest curve, fits Nelson-Siegel-
-Svensson, prints results, and writes metrics to `results/` and plots to
-`figures/`: curve shapes across regimes, the 3M/2Y/10Y rate history, the 2s10s
-inversion, the bootstrapped zero/forward/NSS curve, and the discount-factor curve.
+Svensson, calibrates Hull-White to an ATM swaption vol surface, prints results,
+and writes metrics to `results/` and plots to `figures/`: curve shapes across
+regimes, the 3M/2Y/10Y rate history, the 2s10s inversion, the bootstrapped
+zero/forward/NSS curve, the discount-factor curve, and the Hull-White vol-surface
+calibration fit.
 
 No API key required: the data pipeline ships with a deterministic synthetic
 generator that reproduces the real curve *regimes* (COVID ZLB, the +525 bp hike

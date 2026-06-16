@@ -28,9 +28,26 @@ import pandas as pd  # noqa: E402
 from ird.config import get_settings  # noqa: E402
 from ird.core.conventions import tenor_to_years  # noqa: E402
 from ird.core.curve_date import CurveDate  # noqa: E402
+from ird.core.vol_surface import VolSurface, VolType  # noqa: E402
 from ird.curve import bootstrap_curve, fit_nss, repricing_error_bps  # noqa: E402
 from ird.data.fetch_sofr import build_dataset  # noqa: E402
 from ird.data.validation import validate_history  # noqa: E402
+from ird.models import (  # noqa: E402
+    HullWhite1F,
+    calibrate_hull_white,
+    model_atm_normal_vol,
+)
+
+# A representative ATM swaption normal-vol surface (basis points), expiry x tenor.
+# Stands in for a market quote sheet; swap in real data when available.
+SWAPTION_EXPIRIES = ["1Y", "2Y", "5Y", "10Y"]
+SWAPTION_TENORS = ["2Y", "5Y", "10Y"]
+MARKET_VOL_BP = [
+    [116, 108, 98],
+    [112, 104, 94],
+    [101, 93, 85],
+    [86, 80, 74],
+]
 
 ROOT = Path(__file__).resolve().parent
 FIG_DIR = ROOT / "figures"
@@ -165,6 +182,58 @@ def build_curve_summary(curve, nss, errs: dict[str, float]) -> str:
     return "\n".join(lines)
 
 
+def plot_vol_surface(market_bp, model_bp, expiries, tenors, out: Path) -> None:
+    market = np.array(market_bp, float)
+    model = np.array(model_bp, float)
+    err = model - market
+    grids = [("Market (bp)", market, "Blues"),
+             ("Hull-White (bp)", model, "Blues"),
+             ("Error: model - market (bp)", err, "RdBu_r")]
+    fig, axes = plt.subplots(1, 3, figsize=(13, 4.2))
+    for ax, (title, data, cmap) in zip(axes, grids):
+        vlim = max(abs(err.min()), abs(err.max())) if cmap == "RdBu_r" else None
+        im = ax.imshow(data, cmap=cmap, aspect="auto",
+                       vmin=-vlim if vlim else None, vmax=vlim if vlim else None)
+        ax.set_xticks(range(len(tenors)), tenors)
+        ax.set_yticks(range(len(expiries)), expiries)
+        ax.set_xlabel("Swap tenor")
+        ax.set_ylabel("Option expiry")
+        ax.set_title(title)
+        for i in range(data.shape[0]):
+            for j in range(data.shape[1]):
+                ax.text(j, i, f"{data[i, j]:.0f}", ha="center", va="center",
+                        fontsize=9, color="black")
+        fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
+    fig.suptitle("Hull-White calibration to ATM swaption vol surface")
+    fig.tight_layout()
+    fig.savefig(out, dpi=130)
+    plt.close(fig)
+
+
+def build_hw_summary(res, market_bp, model_bp, expiries, tenors) -> str:
+    """Reproducible Hull-White calibration report."""
+    err = np.array(model_bp) - np.array(market_bp)
+    lines = [
+        "=" * 56,
+        "Hull-White calibration to ATM swaption vol surface",
+        "=" * 56,
+        f"Mean reversion a   : {res.a:.4f}",
+        f"Volatility sigma   : {res.sigma * 1e4:.1f} bp ({res.sigma:.5f})",
+        f"Fit RMSE           : {res.rmse_bps:.2f} bp",
+        f"Max |error|        : {np.abs(err).max():.2f} bp",
+        "",
+        "Grid: rows = expiry, cols = tenor " + str(tenors),
+        "--- Market vols (bp) ---",
+    ]
+    for i, e in enumerate(expiries):
+        lines.append(f"  {e:>4}: " + "  ".join(f"{v:5.1f}" for v in market_bp[i]))
+    lines.append("--- Model vols (bp) ---")
+    for i, e in enumerate(expiries):
+        lines.append(f"  {e:>4}: " + "  ".join(f"{v:5.1f}" for v in model_bp[i]))
+    lines.append("")
+    return "\n".join(lines)
+
+
 def build_summary(df, report, source: str, has_key: bool) -> str:
     """Assemble a human-readable, reproducible metrics report as a string."""
     spread = (df["10Y"] - df["2Y"]) * 100
@@ -258,6 +327,24 @@ def main(argv: list[str] | None = None) -> int:
     curve_summary = build_curve_summary(curve, nss, errs)
     print("\n" + curve_summary)
     (RESULTS_DIR / "curve_metrics.txt").write_text(curve_summary)
+
+    # Calibrate Hull-White to the ATM swaption vol surface.
+    market = [[v / 1e4 for v in row] for row in MARKET_VOL_BP]
+    surface = VolSurface(curve.date, SWAPTION_EXPIRIES, SWAPTION_TENORS,
+                         market, VolType.NORMAL)
+    hw_res = calibrate_hull_white(curve, surface, freq=2)
+    hw = HullWhite1F(hw_res.a, hw_res.sigma, curve)
+    model_bp = [
+        [round(model_atm_normal_vol(hw, tenor_to_years(e), tenor_to_years(t), 2) * 1e4, 1)
+         for t in SWAPTION_TENORS]
+        for e in SWAPTION_EXPIRIES
+    ]
+    plot_vol_surface(MARKET_VOL_BP, model_bp, SWAPTION_EXPIRIES, SWAPTION_TENORS,
+                     FIG_DIR / "06_vol_surface_calibration.png")
+    hw_summary = build_hw_summary(hw_res, MARKET_VOL_BP, model_bp,
+                                  SWAPTION_EXPIRIES, SWAPTION_TENORS)
+    print("\n" + hw_summary)
+    (RESULTS_DIR / "hw_calibration.txt").write_text(hw_summary)
     # Machine-readable bootstrapped curve over a maturity grid.
     pd.DataFrame(
         {
@@ -273,7 +360,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Saved data     -> {RESULTS_DIR / 'curve_history.csv'}")
     print(f"Saved curve    -> {RESULTS_DIR / 'curve_metrics.txt'}, "
           f"{RESULTS_DIR / 'bootstrapped_curve.csv'}")
-    print(f"Saved 5 figures -> {FIG_DIR}/")
+    print(f"Saved HW calib -> {RESULTS_DIR / 'hw_calibration.txt'}")
+    print(f"Saved 6 figures -> {FIG_DIR}/")
     return 0
 
 
