@@ -1,4 +1,4 @@
-"""End-to-end Phase 1 pipeline tests (offline / synthetic)."""
+"""End-to-end pipeline tests (offline / synthetic)."""
 
 from __future__ import annotations
 

@@ -1,7 +1,7 @@
-"""Phase 1 demo runner.
+"""Demo runner.
 
-Builds the SOFR curve dataset, prints a results summary, and saves plots to
-./figures/. No install needed: this script puts ./src on the path itself.
+Builds the Treasury/SOFR curve dataset, prints a results summary, and saves
+plots to ./figures/. No install needed: this script puts ./src on the path itself.
 
 Usage:
     python main.py                 # offline synthetic data (no API key)
@@ -101,7 +101,7 @@ def build_summary(df, report, source: str, has_key: bool) -> str:
     latest = df.iloc[-1]
     lines = [
         "=" * 56,
-        "IRD Pricing Engine - Phase 1 metrics",
+        "IRD Pricing Engine - data pipeline metrics",
         "=" * 56,
         f"Generated         : {dt.datetime.now().isoformat(timespec='seconds')}",
         f"Data source        : {source}  (FRED key detected: {has_key})",
@@ -162,10 +162,10 @@ def main(argv: list[str] | None = None) -> int:
     print("\n" + summary)
 
     RESULTS_DIR.mkdir(exist_ok=True)
-    metrics_path = RESULTS_DIR / "phase1_metrics.txt"
+    metrics_path = RESULTS_DIR / "metrics.txt"
     metrics_path.write_text(summary)
     # Machine-readable copy of the full curve history for reproducibility.
-    df.to_csv(RESULTS_DIR / "phase1_curve_history.csv", index_label="date")
+    df.to_csv(RESULTS_DIR / "curve_history.csv", index_label="date")
 
     FIG_DIR.mkdir(exist_ok=True)
     plot_curve_shapes(df, FIG_DIR / "01_curve_shapes.png")
@@ -173,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
     plot_2s10s(df, FIG_DIR / "03_2s10s_spread.png")
 
     print(f"\nSaved metrics  -> {metrics_path}")
-    print(f"Saved data     -> {RESULTS_DIR / 'phase1_curve_history.csv'}")
+    print(f"Saved data     -> {RESULTS_DIR / 'curve_history.csv'}")
     print(f"Saved 3 figures -> {FIG_DIR}/")
     return 0
 

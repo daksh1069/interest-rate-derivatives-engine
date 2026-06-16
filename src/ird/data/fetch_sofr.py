@@ -1,4 +1,4 @@
-"""Phase 1 entry point: build the SOFR curve-history dataset.
+"""Build the Treasury/SOFR curve-history dataset.
 
 Pulls daily rates from FRED when ``FRED_API_KEY`` is set, otherwise falls back
 to a deterministic synthetic history so the pipeline always runs. The output is

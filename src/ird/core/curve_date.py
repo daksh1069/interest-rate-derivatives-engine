@@ -1,9 +1,9 @@
 """The :class:`CurveDate` value type.
 
 A ``CurveDate`` is the atomic market observation for the engine: a set of par
-swap rates keyed by tenor for a single observation date. Phase 2 turns this into
-a bootstrapped ``ZeroCurve``; everything upstream (data, validation, storage)
-deals in ``CurveDate`` objects.
+swap rates keyed by tenor for a single observation date. The bootstrapper turns
+this into a ``ZeroCurve``; everything upstream (data, validation, storage) deals
+in ``CurveDate`` objects.
 """
 
 from __future__ import annotations

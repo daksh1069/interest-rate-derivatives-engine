@@ -1,11 +1,9 @@
-"""Phase 6 (Weeks 13-14): walk-forward delta-hedging backtest.
+"""Walk-forward delta-hedging backtest.
 
-Planned modules:
-    delta_hedger.py   - walk-forward delta-hedging simulation
+Modules:
+    delta_hedger.py    - walk-forward delta-hedging simulation
     pnl_attribution.py - theta/delta/gamma/vega decomposition
-    metrics.py        - Sharpe, hit rate, max drawdown
-
-Not yet implemented.
+    metrics.py         - Sharpe, hit rate, max drawdown
 """
 
 from __future__ import annotations

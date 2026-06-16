@@ -37,6 +37,10 @@ data/cache/
 .env
 .env.local
 
+# Private planning / job-search notes (kept local, never published)
+_private_notes.md
+IRD_Pricing_Engine_Project_Plan.md
+
 # OS / editor
 .DS_Store
 .idea/

@@ -1,4 +1,4 @@
-"""Phase 1: data ingestion, storage, and validation."""
+"""Data ingestion, storage, and validation."""
 
 from __future__ import annotations
 

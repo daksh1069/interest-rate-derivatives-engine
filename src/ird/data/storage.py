@@ -3,8 +3,7 @@
 Design: the full wide rate history is persisted as a single columnar Parquet
 file (cheap to read, compresses well). A lightweight SQLite table indexes which
 dates are present and how many pillars each has, so date-range availability
-queries don't require loading Parquet. This mirrors the plan's
-"Parquet + SQLite index" storage layer.
+queries don't require loading Parquet.
 """
 
 from __future__ import annotations

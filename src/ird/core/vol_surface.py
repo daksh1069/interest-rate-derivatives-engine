@@ -1,8 +1,8 @@
 """The :class:`VolSurface` value type: an ATM swaption implied-vol grid.
 
 Indexed by (option expiry, swap tenor). Stored as normal (bp) or lognormal
-vols; the convention is carried on the object so calibration code (Phase 3) can
-interpret it correctly.
+vols; the convention is carried on the object so calibration code can interpret
+it correctly.
 """
 
 from __future__ import annotations
