@@ -18,9 +18,10 @@ pip install -r requirements.txt
 python main.py                 # runs the pipeline, prints results, saves figures/
 ```
 
-`main.py` builds the dataset, prints a results summary, and writes three plots to
-`figures/` (curve shapes across regimes, the 3M/2Y/10Y rate history, and the
-2s10s inversion).
+`main.py` builds the dataset, bootstraps the latest curve, fits Nelson-Siegel-
+Svensson, prints results, and writes metrics to `results/` and plots to
+`figures/`: curve shapes across regimes, the 3M/2Y/10Y rate history, the 2s10s
+inversion, the bootstrapped zero/forward/NSS curve, and the discount-factor curve.
 
 No API key required: the data pipeline ships with a deterministic synthetic
 generator that reproduces the real curve *regimes* (COVID ZLB, the +525 bp hike

@@ -22,9 +22,13 @@ import matplotlib
 
 matplotlib.use("Agg")  # headless: save files instead of opening windows
 import matplotlib.pyplot as plt  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
 
 from ird.config import get_settings  # noqa: E402
 from ird.core.conventions import tenor_to_years  # noqa: E402
+from ird.core.curve_date import CurveDate  # noqa: E402
+from ird.curve import bootstrap_curve, fit_nss, repricing_error_bps  # noqa: E402
 from ird.data.fetch_sofr import build_dataset  # noqa: E402
 from ird.data.validation import validate_history  # noqa: E402
 
@@ -93,6 +97,72 @@ def plot_2s10s(df, out: Path) -> None:
     fig.tight_layout()
     fig.savefig(out, dpi=130)
     plt.close(fig)
+
+
+def plot_zero_forward(curve, nss, grid, out: Path) -> None:
+    zero = np.atleast_1d(curve.zero_rate(grid)) * 100
+    fwd = np.atleast_1d(curve.instantaneous_forward(grid)) * 100
+    nss_z = np.atleast_1d(nss.zero_rate(grid)) * 100
+    pz = np.atleast_1d(curve.zero_rate(curve.pillars)) * 100
+    fig, ax = plt.subplots(figsize=(10, 5.5))
+    ax.plot(grid, zero, color="#185FA5", label="Zero rate", linewidth=2)
+    ax.plot(grid, fwd, color="#D85A30", label="Instantaneous forward", linewidth=2, ls="--")
+    ax.plot(grid, nss_z, color="#534AB7", label="NSS fit", linewidth=2, ls=":")
+    ax.scatter(curve.pillars, pz, color="#185FA5", zorder=5, label="Bootstrapped pillars")
+    ax.set_xlabel("Maturity (years)")
+    ax.set_ylabel("Rate (%)")
+    ax.set_title(f"Bootstrapped zero / forward / NSS curve ({curve.date})")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out, dpi=130)
+    plt.close(fig)
+
+
+def plot_discount_factors(curve, grid, out: Path) -> None:
+    dfs = np.atleast_1d(curve.discount_factor(grid))
+    fig, ax = plt.subplots(figsize=(10, 4.5))
+    ax.plot(grid, dfs, color="#1D9E75", linewidth=2)
+    ax.fill_between(grid, dfs, 0, color="#1D9E75", alpha=0.08)
+    ax.set_xlabel("Maturity (years)")
+    ax.set_ylabel("Discount factor P(0,T)")
+    ax.set_ylim(0, 1)
+    ax.set_title(f"Discount factor curve ({curve.date})")
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out, dpi=130)
+    plt.close(fig)
+
+
+def build_curve_summary(curve, nss, errs: dict[str, float]) -> str:
+    """Reproducible metrics for the bootstrapped curve and NSS fit."""
+    sample_T = [t for t in (0.25, 1, 2, 5, 10, 30) if t <= curve.pillars[-1]]
+    lines = [
+        "=" * 56,
+        "Yield curve construction metrics",
+        "=" * 56,
+        f"Curve date         : {curve.date}",
+        f"Interpolation      : {curve.method}",
+        f"Pillars            : {len(curve.pillars)}",
+        f"Max reprice error  : {max(abs(e) for e in errs.values()):.4f} bps",
+        "",
+        "--- Nelson-Siegel-Svensson fit ---",
+        f"RMSE               : {nss.rmse_bps:.3f} bps",
+        f"level  b0          : {nss.beta0 * 100:.3f}%",
+        f"slope  b1          : {nss.beta1 * 100:.3f}%",
+        f"curv1  b2          : {nss.beta2 * 100:.3f}%",
+        f"curv2  b3          : {nss.beta3 * 100:.3f}%",
+        f"decays (L1, L2)    : ({nss.lam1:.2f}, {nss.lam2:.2f})",
+        "",
+        "--- Sample curve (zero / inst. forward / discount factor) ---",
+    ]
+    for T in sample_T:
+        z = float(np.atleast_1d(curve.zero_rate(T))[0]) * 100
+        f = float(np.atleast_1d(curve.instantaneous_forward(T))[0]) * 100
+        d = float(np.atleast_1d(curve.discount_factor(T))[0])
+        lines.append(f"  {T:>5.2f}y : zero {z:6.3f}%   fwd {f:6.3f}%   df {d:.5f}")
+    lines.append("")
+    return "\n".join(lines)
 
 
 def build_summary(df, report, source: str, has_key: bool) -> str:
@@ -172,9 +242,38 @@ def main(argv: list[str] | None = None) -> int:
     plot_rate_history(df, FIG_DIR / "02_rate_history.png")
     plot_2s10s(df, FIG_DIR / "03_2s10s_spread.png")
 
+    # Bootstrap the latest curve, fit NSS, save curve outputs.
+    latest_row = df.iloc[-1]
+    latest_cd = CurveDate(
+        latest_row.name.date(), {t: float(latest_row[t]) for t in df.columns}
+    )
+    curve = bootstrap_curve(latest_cd, method="monotone_convex")
+    errs = repricing_error_bps(curve, latest_cd)
+    nss = fit_nss(curve.pillars, np.atleast_1d(curve.zero_rate(curve.pillars)))
+
+    grid = np.linspace(0.08, float(curve.pillars[-1]), 200)
+    plot_zero_forward(curve, nss, grid, FIG_DIR / "04_zero_forward_curve.png")
+    plot_discount_factors(curve, grid, FIG_DIR / "05_discount_factors.png")
+
+    curve_summary = build_curve_summary(curve, nss, errs)
+    print("\n" + curve_summary)
+    (RESULTS_DIR / "curve_metrics.txt").write_text(curve_summary)
+    # Machine-readable bootstrapped curve over a maturity grid.
+    pd.DataFrame(
+        {
+            "maturity_yrs": grid,
+            "zero_rate": np.atleast_1d(curve.zero_rate(grid)),
+            "fwd_rate": np.atleast_1d(curve.instantaneous_forward(grid)),
+            "nss_zero": np.atleast_1d(nss.zero_rate(grid)),
+            "discount_factor": np.atleast_1d(curve.discount_factor(grid)),
+        }
+    ).to_csv(RESULTS_DIR / "bootstrapped_curve.csv", index=False)
+
     print(f"\nSaved metrics  -> {metrics_path}")
     print(f"Saved data     -> {RESULTS_DIR / 'curve_history.csv'}")
-    print(f"Saved 3 figures -> {FIG_DIR}/")
+    print(f"Saved curve    -> {RESULTS_DIR / 'curve_metrics.txt'}, "
+          f"{RESULTS_DIR / 'bootstrapped_curve.csv'}")
+    print(f"Saved 5 figures -> {FIG_DIR}/")
     return 0
 
 
