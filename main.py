@@ -54,6 +54,15 @@ from ird.backtest import (  # noqa: E402
     run_delta_hedge_backtest,
     sharpe,
 )
+from ird.stress import (  # noqa: E402
+    Portfolio,
+    Position,
+    historical_var,
+    reverse_stress_parallel,
+    run_curve_scenarios,
+    run_historical_scenarios,
+    run_vol_scenarios,
+)
 
 # A representative ATM swaption normal-vol surface (basis points), expiry x tenor.
 # Stands in for a market quote sheet; swap in real data when available.
@@ -225,6 +234,59 @@ def plot_vol_surface(market_bp, model_bp, expiries, tenors, out: Path) -> None:
     fig.tight_layout()
     fig.savefig(out, dpi=130)
     plt.close(fig)
+
+
+def plot_stress_scenarios(scen_bp, out: Path) -> None:
+    names = list(scen_bp)
+    vals = [scen_bp[n] for n in names]
+    colors = ["#185FA5" if v >= 0 else "#D85A30" for v in vals]
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.barh(names, vals, color=colors)
+    ax.axvline(0, color="black", linewidth=0.8)
+    ax.set_xlabel("Portfolio P&L (bp)")
+    ax.set_title("Stress scenario P&L")
+    ax.grid(True, axis="x", alpha=0.3)
+    ax.invert_yaxis()
+    fig.tight_layout()
+    fig.savefig(out, dpi=130)
+    plt.close(fig)
+
+
+def plot_var_cvar(vr, out: Path) -> None:
+    pnl_bp = vr.pnl * 1e4
+    fig, ax = plt.subplots(figsize=(9, 5))
+    ax.hist(pnl_bp, bins=60, color="#185FA5", alpha=0.75)
+    ax.axvline(-vr.var95 * 1e4, color="#D85A30", ls="--", label=f"VaR95 {vr.var95*1e4:.1f}bp")
+    ax.axvline(-vr.var99 * 1e4, color="#A32D2D", ls="--", label=f"VaR99 {vr.var99*1e4:.1f}bp")
+    ax.set_xlabel("1-day P&L (bp)")
+    ax.set_ylabel("Frequency")
+    ax.set_title("1-day P&L distribution with VaR (historical simulation)")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out, dpi=130)
+    plt.close(fig)
+
+
+def build_stress_summary(curve_s, vol_s, hist_s, vr, rstress, base_bp) -> str:
+    """Reproducible stress-testing report."""
+    lines = ["=" * 56, "Stress testing report", "=" * 56,
+             f"Portfolio base value : {base_bp:+.2f} bp", "",
+             "--- Curve scenarios (P&L, bp) ---"]
+    for k, v in curve_s.items():
+        lines.append(f"  {k:<18}: {v * 1e4:+9.2f}")
+    lines.append("--- Volatility shocks (P&L, bp) ---")
+    for k, v in vol_s.items():
+        lines.append(f"  {k:<18}: {v * 1e4:+9.2f}")
+    lines.append("--- Historical replays (P&L, bp) ---")
+    for k, v in hist_s.items():
+        lines.append(f"  {k:<26}: {v * 1e4:+9.2f}")
+    lines += ["", "--- VaR / CVaR (1-day, bp; historical simulation) ---",
+              f"  VaR 95%  : {vr.var95 * 1e4:7.2f}", f"  VaR 99%  : {vr.var99 * 1e4:7.2f}",
+              f"  CVaR 95% : {vr.cvar95 * 1e4:7.2f}", f"  CVaR 99% : {vr.cvar99 * 1e4:7.2f}",
+              "", "--- Reverse stress (parallel shock for 10% loss) ---",
+              f"  shock : {rstress['shock_bp']:+.0f} bp -> loss {rstress['loss'] * 1e4:.1f} bp", ""]
+    return "\n".join(lines)
 
 
 def plot_backtest_pnl(frame, out: Path) -> None:
@@ -559,6 +621,27 @@ def main(argv: list[str] | None = None) -> int:
     bt_summary = build_backtest_summary(bt)
     print("\n" + bt_summary)
     (RESULTS_DIR / "backtest_report.txt").write_text(bt_summary)
+
+    # Stress testing: same book under scenarios, historical replays, VaR/CVaR.
+    pf = Portfolio(
+        [Position(+1, 5.0, 10.0, k1, 2, False), Position(-1, 2.0, 5.0, k2, 2, True)],
+        a_c, sig_c,
+    )
+    curve_s = run_curve_scenarios(pf, curve)
+    vol_s = run_vol_scenarios(pf, curve)
+    hist_s = run_historical_scenarios(pf, curve)
+    vr = historical_var(pf, curve, df, n_samples=2000, seed=0)
+    gross = sum(abs(p.sign) * abs(HullWhite1F(a_c, sig_c, curve).swaption_price(
+        p.expiry, p.tenor, p.strike, p.freq, p.payer)) for p in pf.positions)
+    rstress = reverse_stress_parallel(pf, curve, target_loss=0.10 * gross)
+    scen_for_plot = {**{k: v * 1e4 for k, v in curve_s.items()},
+                     **{k: v * 1e4 for k, v in hist_s.items()}}
+    plot_stress_scenarios(scen_for_plot, FIG_DIR / "11_stress_scenarios.png")
+    plot_var_cvar(vr, FIG_DIR / "12_var_cvar.png")
+    stress_summary = build_stress_summary(curve_s, vol_s, hist_s, vr, rstress,
+                                          pf.value(curve) * 1e4)
+    print("\n" + stress_summary)
+    (RESULTS_DIR / "stress_report.txt").write_text(stress_summary)
     # Machine-readable bootstrapped curve over a maturity grid.
     pd.DataFrame(
         {
@@ -578,7 +661,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Saved MC       -> {RESULTS_DIR / 'mc_pricing.txt'}")
     print(f"Saved risk     -> {RESULTS_DIR / 'risk_report.txt'}")
     print(f"Saved backtest -> {RESULTS_DIR / 'backtest_report.txt'}")
-    print(f"Saved 10 figures -> {FIG_DIR}/")
+    print(f"Saved stress   -> {RESULTS_DIR / 'stress_report.txt'}")
+    print(f"Saved 12 figures -> {FIG_DIR}/")
     return 0
 
 

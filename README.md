@@ -25,8 +25,9 @@ regimes, the 3M/2Y/10Y rate history, the 2s10s inversion, the bootstrapped
 zero/forward/NSS curve, the discount-factor curve, the Hull-White vol-surface
 calibration fit, the Monte Carlo convergence (standard vs control-variate vs
 quasi-MC, plus the Bermudan early-exercise premium), the swaption-book key-rate
-DV01 profile, and the delta-hedging backtest (cumulative hedged vs unhedged P&L
-and the theta/delta/gamma/vega attribution).
+DV01 profile, the delta-hedging backtest (cumulative hedged vs unhedged P&L and
+the theta/delta/gamma/vega attribution), the stress-scenario P&L, and the 1-day
+VaR/CVaR distribution.
 
 No API key required: the data pipeline ships with a deterministic synthetic
 generator that reproduces the real curve *regimes* (COVID ZLB, the +525 bp hike
