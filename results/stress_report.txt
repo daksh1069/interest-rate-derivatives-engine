@@ -1,0 +1,34 @@
+========================================================
+Stress testing report
+========================================================
+Portfolio base value : +230.99 bp
+
+--- Curve scenarios (P&L, bp) ---
+  parallel +100bp   :   -517.24
+  parallel +200bp   :   -951.41
+  parallel +300bp   :  -1318.71
+  parallel -100bp   :   +626.63
+  parallel -200bp   :  +1406.00
+  parallel -300bp   :  +2380.72
+  steepener +100bp  :   -534.79
+  flattener -100bp  :   +767.95
+  bear flattener    :   -247.04
+  bull steepener    :    +81.32
+  butterfly         :    -18.47
+--- Volatility shocks (P&L, bp) ---
+  vol +20%          :    +45.90
+  vol +50%          :   +114.45
+  vol -20%          :    -46.04
+--- Historical replays (P&L, bp) ---
+  COVID crash (Mar 2020)    :   +323.67
+  Fed hike peak (2022)      :   -640.89
+  SVB front-end (Mar 2023)  :   +132.62
+
+--- VaR / CVaR (1-day, bp; historical simulation) ---
+  VaR 95%  :   51.44
+  VaR 99%  :   79.82
+  CVaR 95% :   70.18
+  CVaR 99% :   98.97
+
+--- Reverse stress (parallel shock for 10% loss) ---
+  shock : +13 bp -> loss 72.7 bp

@@ -1,20 +1,20 @@
 ========================================================
 Delta-hedging backtest (1Y x 5Y receiver swaption)
 ========================================================
-Window             : 2025-05-08 -> 2026-05-08 (262 days)
-Hull-White         : a=0.0625, sigma=125 bp
+Window             : 2025-05-12 -> 2026-05-12 (262 days)
+Hull-White         : a=0.0626, sigma=125 bp
 
-Unhedged P&L total : -139.77 bp  (daily std 13.546 bp)
-Hedged P&L total   : -70.12 bp  (daily std 0.724 bp)
-Variance reduction : 18.7x
-Hedged Sharpe      : -5.89
-Hedged max drawdown: 74.30 bp
-Hedged hit rate    : 21.1%
+Unhedged P&L total : -140.85 bp  (daily std 14.608 bp)
+Hedged P&L total   : -61.75 bp  (daily std 0.559 bp)
+Variance reduction : 26.1x
+Hedged Sharpe      : -6.72
+Hedged max drawdown: 63.11 bp
+Hedged hit rate    : 20.7%
 
 --- Unhedged P&L attribution (cumulative, bp) ---
-  theta    : -94.08
-  delta    : -108.31
-  gamma    : +76.96
+  theta    : -66.92
+  delta    : -124.47
+  gamma    : +66.39
   vega     : +0.00
-  residual : -14.34
-  mean|resid|/day : 1.003 bp
+  residual : -15.85
+  mean|resid|/day : 1.079 bp

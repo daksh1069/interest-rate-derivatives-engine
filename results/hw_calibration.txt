@@ -1,9 +1,9 @@
 ========================================================
 Hull-White calibration to ATM swaption vol surface
 ========================================================
-Mean reversion a   : 0.0625
+Mean reversion a   : 0.0626
 Volatility sigma   : 124.6 bp (0.01246)
-Fit RMSE           : 2.74 bp
+Fit RMSE           : 2.75 bp
 Max |error|        : 4.90 bp
 
 Grid: rows = expiry, cols = tenor ['2Y', '5Y', '10Y']
@@ -13,7 +13,7 @@ Grid: rows = expiry, cols = tenor ['2Y', '5Y', '10Y']
     5Y: 101.0   93.0   85.0
    10Y:  86.0   80.0   74.0
 --- Model vols (bp) ---
-    1Y: 116.1  106.4   93.2
-    2Y: 112.6  103.1   90.3
+    1Y: 116.1  106.4   93.1
+    2Y: 112.6  103.1   90.2
     5Y: 103.4   94.9   82.9
    10Y:  90.9   83.4   73.9
