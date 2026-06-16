@@ -55,8 +55,8 @@ def plot_curve_shapes(df, out: Path) -> None:
     ax.set_xticks(xs)
     ax.set_xticklabels(tenors)
     ax.set_xlabel("Maturity")
-    ax.set_ylabel("Zero rate (%)")
-    ax.set_title("SOFR curve shape across regimes")
+    ax.set_ylabel("Par yield (%)")
+    ax.set_title("U.S. Treasury par curve shape across regimes")
     ax.legend()
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
@@ -70,7 +70,7 @@ def plot_rate_history(df, out: Path) -> None:
         ax.plot(df.index, df[tenor] * 100, label=tenor, linewidth=1.3)
     ax.set_xlabel("Date")
     ax.set_ylabel("Rate (%)")
-    ax.set_title("SOFR rate history: 3M / 2Y / 10Y")
+    ax.set_title("U.S. Treasury rate history: 3M / 2Y / 10Y")
     ax.legend()
     ax.grid(True, alpha=0.3)
     fig.tight_layout()
@@ -105,6 +105,8 @@ def build_summary(df, report, source: str, has_key: bool) -> str:
         "=" * 56,
         f"Generated         : {dt.datetime.now().isoformat(timespec='seconds')}",
         f"Data source        : {source}  (FRED key detected: {has_key})",
+        "Instrument         : U.S. Treasury par yields (FRED CMT/DGS series),",
+        "                     used as a public proxy for the SOFR OIS curve.",
         "",
         "--- Dataset ---",
         f"Curve dates stored : {len(df):,}",
@@ -113,11 +115,14 @@ def build_summary(df, report, source: str, has_key: bool) -> str:
         f"Rate range         : {df.min().min() * 100:.2f}% to {df.max().max() * 100:.2f}%",
         "",
         "--- Validation ---",
-        f"NaN cells          : {report.nan_cells}",
-        f"Missing bus. days  : {len(report.missing_business_days)}",
-        f">150bp jump flags  : {len(report.large_jumps)}",
-        f"Inverted days      : {len(report.inverted_dates):,}",
-        f"Clean              : {report.nan_cells == 0 and not report.missing_business_days}",
+        f"NaN cells              : {report.nan_cells}",
+        f"Missing bus. days      : {len(report.missing_business_days)}",
+        f">150bp jump flags      : {len(report.large_jumps)}",
+        f"Days w/ any inversion  : {len(report.inverted_dates):,}  "
+        "(any adjacent pillar dip, anywhere on the curve)",
+        f"Days w/ 2s10s inverted : {int((spread < 0).sum()):,}  (10Y below 2Y)",
+        f"Clean                  : "
+        f"{report.nan_cells == 0 and not report.missing_business_days}",
         "",
         "--- 2s10s slope (10Y - 2Y, %) ---",
         f"Min (most inverted): {spread.min():.2f}  on {spread.idxmin().date()}",
