@@ -28,7 +28,9 @@ from ird.core.conventions import tenor_to_years  # noqa: E402
 from ird.data.fetch_sofr import build_dataset  # noqa: E402
 from ird.data.validation import validate_history  # noqa: E402
 
-FIG_DIR = Path(__file__).resolve().parent / "figures"
+ROOT = Path(__file__).resolve().parent
+FIG_DIR = ROOT / "figures"
+RESULTS_DIR = ROOT / "results"
 
 # Representative dates -> regime label, for the curve-shape plot.
 REGIMES = {
@@ -93,6 +95,47 @@ def plot_2s10s(df, out: Path) -> None:
     plt.close(fig)
 
 
+def build_summary(df, report, source: str, has_key: bool) -> str:
+    """Assemble a human-readable, reproducible metrics report as a string."""
+    spread = (df["10Y"] - df["2Y"]) * 100
+    latest = df.iloc[-1]
+    lines = [
+        "=" * 56,
+        "IRD Pricing Engine - Phase 1 metrics",
+        "=" * 56,
+        f"Generated         : {dt.datetime.now().isoformat(timespec='seconds')}",
+        f"Data source        : {source}  (FRED key detected: {has_key})",
+        "",
+        "--- Dataset ---",
+        f"Curve dates stored : {len(df):,}",
+        f"Date range         : {df.index.min().date()} -> {df.index.max().date()}",
+        f"Pillars            : {', '.join(df.columns)}",
+        f"Rate range         : {df.min().min() * 100:.2f}% to {df.max().max() * 100:.2f}%",
+        "",
+        "--- Validation ---",
+        f"NaN cells          : {report.nan_cells}",
+        f"Missing bus. days  : {len(report.missing_business_days)}",
+        f">150bp jump flags  : {len(report.large_jumps)}",
+        f"Inverted days      : {len(report.inverted_dates):,}",
+        f"Clean              : {report.nan_cells == 0 and not report.missing_business_days}",
+        "",
+        "--- 2s10s slope (10Y - 2Y, %) ---",
+        f"Min (most inverted): {spread.min():.2f}  on {spread.idxmin().date()}",
+        f"Max (steepest)     : {spread.max():.2f}  on {spread.idxmax().date()}",
+        f"Latest             : {spread.iloc[-1]:.2f}",
+        "",
+        "--- Per-tenor (mean / min / max / latest, %) ---",
+    ]
+    for t in df.columns:
+        col = df[t] * 100
+        lines.append(
+            f"  {t:>4} : mean {col.mean():5.2f}   min {col.min():5.2f}   "
+            f"max {col.max():5.2f}   latest {latest[t] * 100:5.2f}"
+        )
+    lines.append("")
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", choices=["auto", "fred", "synthetic"], default="auto")
@@ -110,23 +153,23 @@ def main(argv: list[str] | None = None) -> int:
     df = store.read_history()
     report = validate_history(df)
 
-    print("\n=== Phase 1 results ===")
-    print(f"Curve dates stored : {len(df):,}")
-    print(f"Date range         : {df.index.min().date()} -> {df.index.max().date()}")
-    print(f"Pillars            : {', '.join(df.columns)}")
-    print(f"Rate range         : {df.min().min() * 100:.2f}% to {df.max().max() * 100:.2f}%")
-    print(f"Inverted days      : {len(report.inverted_dates):,}")
-    print(f"Validation clean   : {report.nan_cells == 0 and not report.missing_business_days}")
-    latest = df.iloc[-1]
-    print("\nLatest curve (%):")
-    for t in df.columns:
-        print(f"  {t:>4} : {latest[t] * 100:5.2f}")
+    summary = build_summary(df, report, args.source, settings.has_fred_key)
+    print("\n" + summary)
+
+    RESULTS_DIR.mkdir(exist_ok=True)
+    metrics_path = RESULTS_DIR / "phase1_metrics.txt"
+    metrics_path.write_text(summary)
+    # Machine-readable copy of the full curve history for reproducibility.
+    df.to_csv(RESULTS_DIR / "phase1_curve_history.csv", index_label="date")
 
     FIG_DIR.mkdir(exist_ok=True)
     plot_curve_shapes(df, FIG_DIR / "01_curve_shapes.png")
     plot_rate_history(df, FIG_DIR / "02_rate_history.png")
     plot_2s10s(df, FIG_DIR / "03_2s10s_spread.png")
-    print(f"\nSaved 3 figures to {FIG_DIR}/")
+
+    print(f"\nSaved metrics  -> {metrics_path}")
+    print(f"Saved data     -> {RESULTS_DIR / 'phase1_curve_history.csv'}")
+    print(f"Saved 3 figures -> {FIG_DIR}/")
     return 0
 
 
