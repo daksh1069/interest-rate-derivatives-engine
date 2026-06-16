@@ -1,0 +1,23 @@
+========================================================
+Yield curve construction metrics
+========================================================
+Curve date         : 2026-06-12
+Interpolation      : monotone_convex
+Pillars            : 11
+Max reprice error  : 0.3397 bps
+
+--- Nelson-Siegel-Svensson fit ---
+RMSE               : 6.157 bps
+level  b0          : 1.828%
+slope  b1          : 1.921%
+curv1  b2          : -35.126%
+curv2  b3          : 42.753%
+decays (L1, L2)    : (10.80, 12.00)
+
+--- Sample curve (zero / inst. forward / discount factor) ---
+   0.25y : zero  3.762%   fwd  3.803%   df 0.99064
+   1.00y : zero  3.787%   fwd  3.940%   df 0.96283
+   2.00y : zero  4.013%   fwd  4.169%   df 0.92287
+   5.00y : zero  4.132%   fwd  4.440%   df 0.81334
+  10.00y : zero  4.421%   fwd  4.978%   df 0.64268
+  30.00y : zero  4.961%   fwd  4.596%   df 0.22579
