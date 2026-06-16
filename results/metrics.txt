@@ -1,7 +1,7 @@
 ========================================================
 IRD Pricing Engine - data pipeline metrics
 ========================================================
-Generated         : 2026-06-16T10:22:56
+Generated         : 2026-06-16T10:32:56
 Data source        : fred  (FRED key detected: True)
 Instrument         : U.S. Treasury par yields (FRED CMT/DGS series),
                      used as a public proxy for the SOFR OIS curve.
