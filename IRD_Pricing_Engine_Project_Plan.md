@@ -3,14 +3,14 @@
 
 **Project Title (for resume):** *Yield Curve Construction, Short Rate Model Calibration & Monte Carlo Swaption Pricing Engine*  
 **Timeline:** ~16 weeks  
-**Stack:** Python · C++ (pybind11) · FRED/SOFR data  
+**Stack:** Pure Python (NumPy · SciPy · pandas) · FRED data  
 **GitHub Deliverable:** Public repo with modular codebase, Jupyter notebooks, CI tests
 
 ---
 
 ## ATS Keywords Unlocked
 
-`yield curve` · `bootstrapping` · `Nelson-Siegel-Svensson` · `SOFR` · `forward rates` · `discount factors` · `Hull-White` · `Vasicek` · `short rate model` · `interest rate model calibration` · `mean reversion` · `Monte Carlo simulation` · `variance reduction` · `antithetic variates` · `control variates` · `quasi-Monte Carlo` · `Sobol sequences` · `swaption pricing` · `Bermudan swaption` · `Longstaff-Schwartz` · `LSM` · `C++` · `pybind11` · `OpenMP` · `DV01` · `duration` · `convexity` · `key rate duration` · `interest rate risk` · `stress testing` · `P&L attribution` · `VaR` · `CVaR` · `fixed income` · `interest rate derivatives`
+`yield curve` · `bootstrapping` · `Nelson-Siegel-Svensson` · `SOFR` · `forward rates` · `discount factors` · `Hull-White` · `Vasicek` · `short rate model` · `interest rate model calibration` · `mean reversion` · `Monte Carlo simulation` · `variance reduction` · `antithetic variates` · `control variates` · `quasi-Monte Carlo` · `swaption pricing` · `Bermudan swaption` · `Longstaff-Schwartz` · `LSM` · `NumPy` · `SciPy` · `vectorization` · `DV01` · `duration` · `convexity` · `key rate duration` · `interest rate risk` · `stress testing` · `P&L attribution` · `VaR` · `CVaR` · `fixed income` · `interest rate derivatives`
 
 ---
 
@@ -30,11 +30,10 @@ ird-pricing-engine/
 │   ├── vasicek.py             # Analytical bond/option pricing
 │   ├── hull_white_1f.py       # Trinomial tree + analytical formulas
 │   └── calibration.py         # MLE + least-squares to swaption surface
-├── cpp/
-│   ├── mc_engine.cpp          # Monte Carlo path generator
-│   ├── swaption_pricer.cpp    # European + Bermudan (LSM)
-│   ├── bindings.cpp           # pybind11 interface
-│   └── CMakeLists.txt
+├── mc/
+│   ├── paths.py               # Vectorized Hull-White path generator (NumPy)
+│   ├── swaption_pricer.py     # European + Bermudan (Longstaff-Schwartz LSM)
+│   └── variance_reduction.py  # Antithetic + control variates, Sobol QMC
 ├── greeks/
 │   ├── bump_reprice.py        # DV01, KRDs, finite difference Greeks
 │   └── pathwise.py            # Pathwise/likelihood ratio MC Greeks
@@ -179,58 +178,49 @@ Calibrate (a, σ) to the swaption vol surface (ATM implied vols for a grid of op
 
 ---
 
-## Phase 4: C++ Monte Carlo Engine
+## Phase 4: Vectorized Monte Carlo Engine (Pure Python)
 **Duration:** Weeks 9–10
 
 ### Goal
-Build a high-performance MC pricer in C++, exposed to Python via pybind11. This is the key differentiator — it demonstrates production-level quant dev skills.
+Build a fast, fully **vectorized** Monte Carlo swaption pricer in pure Python with NumPy. The performance story here is *vectorization done right* — generating all paths as NumPy arrays in a few operations rather than Python loops — plus variance reduction. No C++.
 
 ### Implementation
 
 **Path Generation (Exact Scheme for HW1F):**  
-The Hull-White model has an exact (non-Euler) discretization. Use it — Euler introduces bias for large timesteps.
-```cpp
-// Exact discretization of dr = [θ(t) - a*r]dt + σ*dW
-// r(t+Δt) | r(t) ~ Normal(μ(t,Δt), v²(Δt))
-// μ = r(t)*exp(-a*Δt) + (θ̄/a)*(1 - exp(-a*Δt))
-// v² = σ²/(2a) * (1 - exp(-2a*Δt))
+The Hull-White model has an exact (non-Euler) discretization. Use it — Euler introduces bias for large timesteps. Generate the full `(n_paths × n_steps)` array of normals at once and build paths with `np.cumsum` / broadcasting — no per-path Python loop.
+```python
+# Exact discretization of dr = [theta(t) - a*r]dt + sigma*dW
+# r(t+dt) | r(t) ~ Normal(mu(t,dt), v2(dt))
+# mu = r(t)*exp(-a*dt) + (theta_bar/a)*(1 - exp(-a*dt))
+# v2 = sigma**2/(2a) * (1 - exp(-2a*dt))
 ```
 
 **Variance Reduction:**
 1. **Antithetic variates** — generate paths in pairs (W, -W). Halves effective variance for smooth payoffs.
 2. **Control variates** — use the analytically known bond price as a control variate for the discount factor. Reduces MC error dramatically.
-3. **Quasi-Monte Carlo (Sobol sequences)** — replace pseudo-random normals with Sobol low-discrepancy sequences. For D-dimensional integration (D = number of timesteps), Sobol converges at O(log(N)^D / N) vs O(1/√N) for standard MC.
+3. **Quasi-Monte Carlo (Sobol sequences)** — replace pseudo-random normals with Sobol low-discrepancy sequences via `scipy.stats.qmc.Sobol`. For D-dimensional integration (D = number of timesteps), Sobol converges at O(log(N)^D / N) vs O(1/√N) for standard MC.
 
 **Swaption Pricers:**
 - **European swaption** — at expiry, the swaption pays max(swap_value, 0). Price by averaging discounted payoffs.
 - **Bermudan swaption** — Longstaff-Schwartz (LSM) algorithm:
   1. Simulate N paths to final maturity
-  2. Backward pass: at each exercise date, regress continuation value on basis functions of current state
+  2. Backward pass: at each exercise date, regress continuation value on basis functions (polynomials) of current state via `numpy.polynomial`
   3. Exercise when intrinsic value > estimated continuation value
   4. Price by forward pass using estimated exercise boundary
 
-**Parallelization:**  
-Use `#pragma omp parallel for` (OpenMP) to distribute paths across CPU cores. Benchmark on 10k, 100k, 1M paths.
-
-**pybind11 Bindings:**
-```cpp
-PYBIND11_MODULE(mc_engine, m) {
-    m.def("price_european_swaption", &price_european_swaption, ...);
-    m.def("price_bermudan_swaption", &price_bermudan_swaption, ...);
-    m.def("generate_rate_paths", &generate_rate_paths, ...);
-}
-```
+**Performance:**  
+Vectorize fully so a 100k-path European price runs in well under a second. Optionally use `numpy.random.Generator` for fast normals and chunk very large path counts to bound memory. (If you ever want more speed later, `numba`'s `@njit` is a pure-Python-friendly option — but it is not required.)
 
 **Benchmarking to document:**
 - European swaption: MC vs Jamshidian analytical — should match within 0.1 vol bp at 1M paths
-- Bermudan vs European: Bermudan must be >= European (no early exercise premium is negative)
-- Speed: C++ vs pure Python MC — expect 50–200x speedup
+- Bermudan vs European: Bermudan must be >= European (early-exercise premium is non-negative)
+- Speed: vectorized NumPy vs a naive Python-loop MC — expect a large speedup, document it
 - Convergence: plot price standard error vs √N for standard MC, compare to Sobol
 
 ### Key Outputs
-- `mc_engine` Python-importable C++ module
+- `ird.mc` module: `price_european_swaption`, `price_bermudan_swaption`, `generate_rate_paths`
 - Convergence and benchmarking notebook
-- Performance comparison table (standard error, runtime, speedup)
+- Performance comparison table (standard error, runtime, vectorized-vs-loop speedup)
 
 ---
 
@@ -383,7 +373,7 @@ s.t. P&L(Δy) ≤ -0.10 × Notional
 ### GitHub README Structure
 1. Project overview and motivation (1 paragraph)
 2. Architecture diagram
-3. Quick start (pip install + build C++ + run demo notebook)
+3. Quick start (pip install -r requirements.txt + run demo notebook)
 4. Mathematical background (1 page with key equations)
 5. Results summary (vol surface fit, backtest Sharpe, stress test table)
 6. ATS keywords section (yes, put it in the README — recruiters skim repos)
@@ -394,11 +384,11 @@ s.t. P&L(Δy) ≤ -0.10 × Notional
 
 **Project Title:** *Yield Curve Construction, Short Rate Model Calibration & Monte Carlo Swaption Pricing Engine*
 
-> Engineered an end-to-end fixed income derivatives pricing system in Python and C++, constructing SOFR zero curves via bootstrapping and Nelson-Siegel-Svensson parameterization across 1,500+ historical curve dates (2018–2024).
+> Engineered an end-to-end fixed income derivatives pricing system in pure Python (NumPy/SciPy), constructing Treasury/SOFR zero curves via bootstrapping and Nelson-Siegel-Svensson parameterization across 1,500+ historical curve dates (2018–2024).
 
 > Calibrated Hull-White 1-factor and Vasicek short rate models to ATM swaption vol surfaces using least-squares optimization; achieved vol surface fit RMSE of [X] bps, enabling accurate swaption pricing across expiry-tenor grids.
 
-> Built a high-performance C++ Monte Carlo engine (exposed via pybind11) with antithetic variates, control variates, and Sobol quasi-random sequences; priced European and Bermudan swaptions (via Longstaff-Schwartz LSM), achieving [X]x speedup over Python and convergence within 0.1 vol bp of analytical benchmarks at 1M paths.
+> Built a fully vectorized NumPy Monte Carlo engine with antithetic variates, control variates, and Sobol quasi-random sequences; priced European and Bermudan swaptions (via Longstaff-Schwartz LSM), achieving [X]x speedup over a naive Python-loop implementation and convergence within 0.1 vol bp of analytical benchmarks at 1M paths.
 
 > Computed DV01, key rate durations, duration, convexity, and Vega across a swaption book; conducted walk-forward delta-hedging backtest (2019–2024) with monthly HW recalibration, decomposing P&L into theta, delta, gamma, and vega components — maintained [X]% hedge effectiveness through the 2022 Fed rate hike cycle (+525 bps).
 
@@ -414,7 +404,7 @@ s.t. P&L(Δy) ≤ -0.10 × Notional
 | 2 | Yield curve bootstrapping & NSS | 3–4 |
 | 3A | Vasicek model & calibration | 5–6 |
 | 3B | Hull-White 1F model & calibration | 7–8 |
-| 4 | C++ MC engine (European + Bermudan LSM) | 9–10 |
+| 4 | Vectorized NumPy MC engine (European + Bermudan LSM) | 9–10 |
 | 5 | Greeks: DV01, KRDs, duration, convexity | 11–12 |
 | 6 | Walk-forward delta-hedging backtest | 13–14 |
 | 7 | Stress testing & VaR/CVaR | 15–16 |
@@ -424,4 +414,4 @@ s.t. P&L(Δy) ≤ -0.10 × Notional
 
 ## What to Build Next (After This Project)
 
-Once this is on your resume, your remaining gap is **statistical arbitrage**. A Kalman filter–based pairs trading engine (cointegration, OU process, dynamic hedge ratio, execution via C++) would cover HF/prop trading roles and add: `stat arb`, `pairs trading`, `cointegration`, `Ornstein-Uhlenbeck`, `Kalman filter`, `mean reversion`. Together, the two projects make you competitive for derivatives quant, rates quant, quant research, and trading quant roles across all firm types.
+Once this is on your resume, your remaining gap is **statistical arbitrage**. A Kalman filter–based pairs trading engine (cointegration, OU process, dynamic hedge ratio, all in Python) would cover HF/prop trading roles and add: `stat arb`, `pairs trading`, `cointegration`, `Ornstein-Uhlenbeck`, `Kalman filter`, `mean reversion`. Together, the two projects make you competitive for derivatives quant, rates quant, quant research, and trading quant roles across all firm types.

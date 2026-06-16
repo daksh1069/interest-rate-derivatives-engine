@@ -37,13 +37,6 @@ data/cache/
 .env
 .env.local
 
-# C++ build
-cpp/build/
-*.o
-*.obj
-*.dylib
-*.dll
-
 # OS / editor
 .DS_Store
 .idea/

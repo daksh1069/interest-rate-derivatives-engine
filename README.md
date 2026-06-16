@@ -2,11 +2,12 @@
 
 **Yield Curve Construction · Short-Rate Model Calibration · Monte Carlo Swaption Pricing**
 
-An end-to-end fixed-income derivatives engine in **Python + C++**: bootstrap SOFR
-zero curves, calibrate Vasicek and Hull-White short-rate models, price European
-and Bermudan swaptions with a high-performance Monte Carlo engine (pybind11 /
-OpenMP / Sobol), compute Greeks, and run walk-forward hedging backtests and
-stress tests through the 2020 COVID, 2022 hike-cycle, and 2023 SVB regimes.
+An end-to-end fixed-income derivatives engine in **pure Python** (NumPy / SciPy):
+bootstrap Treasury/SOFR zero curves, calibrate Vasicek and Hull-White short-rate
+models, price European and Bermudan swaptions with a vectorized Monte Carlo
+engine (antithetic + control variates, Longstaff-Schwartz LSM), compute Greeks,
+and run walk-forward hedging backtests and stress tests through the 2020 COVID,
+2022 hike-cycle, and 2023 SVB regimes.
 
 > Status: **Phase 1 complete** (data infrastructure). Phases 2–8 scaffolded.
 > See [`IRD_Pricing_Engine_Project_Plan.md`](IRD_Pricing_Engine_Project_Plan.md)
@@ -76,8 +77,8 @@ print(curve)  # CurveDate(2026-06-12: 1M=..., 3M=..., ... 30Y=...)
 `forward rates` · `discount factors` · `Hull-White` · `Vasicek` ·
 `short rate model` · `mean reversion` · `Monte Carlo simulation` ·
 `variance reduction` · `antithetic variates` · `control variates` ·
-`Sobol sequences` · `swaption pricing` · `Bermudan swaption` ·
-`Longstaff-Schwartz` · `C++` · `pybind11` · `OpenMP` · `DV01` · `duration` ·
+`quasi-Monte Carlo` · `swaption pricing` · `Bermudan swaption` ·
+`Longstaff-Schwartz` · `NumPy` · `SciPy` · `vectorization` · `DV01` · `duration` ·
 `convexity` · `key rate duration` · `interest rate risk` · `stress testing` ·
 `P&L attribution` · `VaR` · `CVaR` · `fixed income` · `interest rate derivatives`
 

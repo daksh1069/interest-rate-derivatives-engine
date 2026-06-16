@@ -1,8 +1,10 @@
 ========================================================
 IRD Pricing Engine - Phase 1 metrics
 ========================================================
-Generated         : 2026-06-16T01:43:46
+Generated         : 2026-06-16T01:48:42
 Data source        : fred  (FRED key detected: True)
+Instrument         : U.S. Treasury par yields (FRED CMT/DGS series),
+                     used as a public proxy for the SOFR OIS curve.
 
 --- Dataset ---
 Curve dates stored : 2,205
@@ -11,11 +13,12 @@ Pillars            : 1M, 3M, 6M, 1Y, 2Y, 3Y, 5Y, 7Y, 10Y, 20Y, 30Y
 Rate range         : 0.00% to 6.02%
 
 --- Validation ---
-NaN cells          : 0
-Missing bus. days  : 0
->150bp jump flags  : 0
-Inverted days      : 1,626
-Clean              : True
+NaN cells              : 0
+Missing bus. days      : 0
+>150bp jump flags      : 0
+Days w/ any inversion  : 1,626  (any adjacent pillar dip, anywhere on the curve)
+Days w/ 2s10s inverted : 566  (10Y below 2Y)
+Clean                  : True
 
 --- 2s10s slope (10Y - 2Y, %) ---
 Min (most inverted): -1.08  on 2023-07-03
