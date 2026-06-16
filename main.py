@@ -48,6 +48,12 @@ from ird.greeks import (  # noqa: E402
     swaption_price_fn,
     swaption_vega,
 )
+from ird.backtest import (  # noqa: E402
+    hit_rate,
+    max_drawdown,
+    run_delta_hedge_backtest,
+    sharpe,
+)
 
 # A representative ATM swaption normal-vol surface (basis points), expiry x tenor.
 # Stands in for a market quote sheet; swap in real data when available.
@@ -219,6 +225,75 @@ def plot_vol_surface(market_bp, model_bp, expiries, tenors, out: Path) -> None:
     fig.tight_layout()
     fig.savefig(out, dpi=130)
     plt.close(fig)
+
+
+def plot_backtest_pnl(frame, out: Path) -> None:
+    f = frame.dropna(subset=["hedged_pnl"])
+    fig, ax = plt.subplots(figsize=(10, 5))
+    ax.plot(f.index, np.cumsum(f["unhedged_pnl"]) * 1e4, color="#D85A30",
+            label="Unhedged swaption", linewidth=1.5)
+    ax.plot(f.index, np.cumsum(f["hedged_pnl"]) * 1e4, color="#1D9E75",
+            label="Delta-hedged", linewidth=1.5)
+    ax.axhline(0, color="black", linewidth=0.8)
+    ax.set_xlabel("Date")
+    ax.set_ylabel("Cumulative P&L (bp)")
+    ax.set_title("Delta-hedging backtest: hedged vs unhedged P&L")
+    ax.legend()
+    ax.grid(True, alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out, dpi=130)
+    plt.close(fig)
+
+
+def plot_pnl_attribution(frame, out: Path) -> None:
+    f = frame.dropna(subset=["dV"])
+    comps = {"theta": f["theta"].sum(), "delta": f["delta"].sum(),
+             "gamma": f["gamma_pnl"].sum(), "vega": f["vega_pnl"].sum(),
+             "residual": f["residual"].sum()}
+    vals = [v * 1e4 for v in comps.values()]
+    colors = ["#185FA5" if v >= 0 else "#D85A30" for v in vals]
+    fig, ax = plt.subplots(figsize=(8, 5))
+    ax.bar(list(comps), vals, color=colors)
+    ax.axhline(0, color="black", linewidth=0.8)
+    ax.set_ylabel("Cumulative P&L contribution (bp)")
+    ax.set_title("Unhedged swaption P&L attribution")
+    ax.grid(True, axis="y", alpha=0.3)
+    fig.tight_layout()
+    fig.savefig(out, dpi=130)
+    plt.close(fig)
+
+
+def build_backtest_summary(res) -> str:
+    """Reproducible delta-hedging backtest report."""
+    s = res.summary
+    f = res.frame.dropna(subset=["hedged_pnl"])
+    hp = f["hedged_pnl"].to_numpy()
+    fa = res.frame.dropna(subset=["dV"])
+    return "\n".join([
+        "=" * 56,
+        "Delta-hedging backtest (1Y x 5Y receiver swaption)",
+        "=" * 56,
+        f"Window             : {s['inception']} -> {s['expiry_date']} ({s['n_days']} days)",
+        f"Hull-White         : a={res.a:.4f}, sigma={res.sigma * 1e4:.0f} bp",
+        "",
+        f"Unhedged P&L total : {s['unhedged_pnl_total'] * 1e4:+.2f} bp  "
+        f"(daily std {s['unhedged_pnl_std'] * 1e4:.3f} bp)",
+        f"Hedged P&L total   : {s['hedged_pnl_total'] * 1e4:+.2f} bp  "
+        f"(daily std {s['hedged_pnl_std'] * 1e4:.3f} bp)",
+        f"Variance reduction : {s['variance_reduction']:.1f}x",
+        f"Hedged Sharpe      : {sharpe(hp):.2f}",
+        f"Hedged max drawdown: {max_drawdown(np.cumsum(hp)) * 1e4:.2f} bp",
+        f"Hedged hit rate    : {hit_rate(hp):.1%}",
+        "",
+        "--- Unhedged P&L attribution (cumulative, bp) ---",
+        f"  theta    : {fa['theta'].sum() * 1e4:+.2f}",
+        f"  delta    : {fa['delta'].sum() * 1e4:+.2f}",
+        f"  gamma    : {fa['gamma_pnl'].sum() * 1e4:+.2f}",
+        f"  vega     : {fa['vega_pnl'].sum() * 1e4:+.2f}",
+        f"  residual : {fa['residual'].sum() * 1e4:+.2f}",
+        f"  mean|resid|/day : {s['mean_abs_residual_bp']:.3f} bp",
+        "",
+    ])
 
 
 def plot_krd_profile(tenors, krd_bp, out: Path) -> None:
@@ -472,6 +547,18 @@ def main(argv: list[str] | None = None) -> int:
     risk_summary = build_risk_summary(book, net_dv01, net_vega, net_gamma, krd_net)
     print("\n" + risk_summary)
     (RESULTS_DIR / "risk_report.txt").write_text(risk_summary)
+
+    # Walk-forward delta-hedging backtest (1Y x 5Y receiver), over a 1-year window.
+    last = df.index[-1]
+    target = pd.Timestamp(last) - pd.Timedelta(days=400)
+    inception = df.index[df.index.get_indexer([target], method="nearest")[0]]
+    bt = run_delta_hedge_backtest(df, inception, a=a_c, sigma=sig_c,
+                                  expiry=1.0, tenor=5.0, payer=False)
+    plot_backtest_pnl(bt.frame, FIG_DIR / "09_backtest_pnl.png")
+    plot_pnl_attribution(bt.frame, FIG_DIR / "10_pnl_attribution.png")
+    bt_summary = build_backtest_summary(bt)
+    print("\n" + bt_summary)
+    (RESULTS_DIR / "backtest_report.txt").write_text(bt_summary)
     # Machine-readable bootstrapped curve over a maturity grid.
     pd.DataFrame(
         {
@@ -490,7 +577,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Saved HW calib -> {RESULTS_DIR / 'hw_calibration.txt'}")
     print(f"Saved MC       -> {RESULTS_DIR / 'mc_pricing.txt'}")
     print(f"Saved risk     -> {RESULTS_DIR / 'risk_report.txt'}")
-    print(f"Saved 8 figures -> {FIG_DIR}/")
+    print(f"Saved backtest -> {RESULTS_DIR / 'backtest_report.txt'}")
+    print(f"Saved 10 figures -> {FIG_DIR}/")
     return 0
 
 

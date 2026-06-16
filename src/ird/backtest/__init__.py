@@ -1,11 +1,19 @@
 """Walk-forward delta-hedging backtest.
 
 Modules:
-    delta_hedger.py    - walk-forward delta-hedging simulation
-    pnl_attribution.py - theta/delta/gamma/vega decomposition
-    metrics.py         - Sharpe, hit rate, max drawdown
+    delta_hedger.py - walk-forward delta-hedge with theta/delta/gamma/vega P&L
+    metrics.py      - Sharpe, hit rate, max drawdown
 """
 
 from __future__ import annotations
 
-__all__: list[str] = []
+from ird.backtest.delta_hedger import BacktestResult, run_delta_hedge_backtest
+from ird.backtest.metrics import hit_rate, max_drawdown, sharpe
+
+__all__ = [
+    "BacktestResult",
+    "hit_rate",
+    "max_drawdown",
+    "run_delta_hedge_backtest",
+    "sharpe",
+]

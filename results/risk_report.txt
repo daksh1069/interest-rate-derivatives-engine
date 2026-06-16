@@ -1,0 +1,23 @@
+========================================================
+Swaption book risk report (bump-and-reprice)
+========================================================
+Positions:
+  long  5Yx10Y receiver              PV =   469.91 bp
+  short 2Yx5Y payer                  PV =  -239.29 bp
+
+Net DV01           : +5.653  (x1e4, per 1bp parallel)
+Net curve convexity: +1.0734e+02  (d2V/dy2)
+Net vega           : +1.842  (x1e4, per 1bp sigma)
+
+--- Net key-rate DV01 profile (x1e4 per 1bp) ---
+   0.083y : +0.0000
+   0.250y : +0.0000
+   0.500y : -0.0000
+   1.000y : +0.0002
+   2.000y : -0.9464
+   3.000y : +0.0955
+   5.000y : -1.6685
+   7.000y : +3.1777
+  10.000y : +1.9564
+  20.000y : +2.8940
+  30.000y : +0.1528
